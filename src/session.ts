@@ -277,7 +277,7 @@ export class Session extends DebugSession {
     // VSCode wants to attach to a debugee (MC), create socket connection on specified port
     protected async attachRequest(
         response: DebugProtocol.AttachResponse,
-        args: IAttachRequestArguments,
+        args: IAttachRequestArguments
     ): Promise<void> {
         this.closeSession();
 
