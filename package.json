@@ -192,6 +192,11 @@
                     "default": "",
                     "description": "Override the default locations and monitor any workspace files that match the glob pattern."
                 },
+                "minecraft-debugger.reloadWorldOnRestart": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Restarting the debug session will restart your Minecraft World and attempt to reconnect the debugger."
+                },
                 "minecraft-debugger.showDiagnosticViewOnConnect": {
                     "type": "boolean",
                     "default": false,

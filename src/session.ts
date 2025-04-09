@@ -78,6 +78,11 @@ interface IAttachRequestArguments extends DebugProtocol.AttachRequestArguments {
     passcode?: string;
 }
 
+// Interface for restart arguments which includes the launch arguments defined in IAttachRequestArguments
+interface IRestartRequestArguments extends DebugProtocol.RestartArguments {
+    arguments: IAttachRequestArguments;
+}
+
 class TargetPluginItem implements QuickPickItem {
     public label: string;
     public detail: string;
@@ -120,6 +125,7 @@ export class Session extends DebugSession {
 
     private _debugeeServer?: Server; // when listening for incoming connections
     private _connectionSocket?: Socket;
+    private _restarting = false;
     private _connected = false;
     private _terminated = false;
     private _threads = new Set<number>();
@@ -245,6 +251,8 @@ export class Session extends DebugSession {
         const capabilities: DebugProtocol.Capabilities = {
             // indicates VSCode should send the configurationDoneRequest
             supportsConfigurationDoneRequest: true,
+            // indicates VSCode should send the restartRequest
+            supportsRestartRequest: true,
             // additional breakpoint filter options shown in UI
             exceptionBreakpointFilters: [
                 {
@@ -269,7 +277,7 @@ export class Session extends DebugSession {
     // VSCode wants to attach to a debugee (MC), create socket connection on specified port
     protected async attachRequest(
         response: DebugProtocol.AttachResponse,
-        args: IAttachRequestArguments
+        args: IAttachRequestArguments,
     ): Promise<void> {
         this.closeSession();
 
@@ -552,6 +560,18 @@ export class Session extends DebugSession {
         });
     }
 
+    protected restartRequest(response: DebugProtocol.RestartResponse, args: IRestartRequestArguments, request?: DebugProtocol.Request): void {
+        // If the player has enabled the world reload setting and the debugger is connected, reload the world
+        if (workspace.getConfiguration('minecraft-debugger').get('reloadWorldOnRestart') && this._connected) {
+            // For whatever reason `/reload all` just acts as regular `/reload`, executing from a player works correctly however.
+            this._restarting = true;
+            this.onRunMinecraftCommand("execute as @p run reload all");
+            this.attachRequest(response, args.arguments);
+        } else {
+            this.sendResponse(response);
+        }
+    }
+
     protected disconnectRequest(response: DebugProtocol.DisconnectResponse): void {
         // closeSession triggers the 'close' event on the socket which will call terminateSession
         this.closeServer();
@@ -607,6 +627,7 @@ export class Session extends DebugSession {
 
     private onDebugeeConnected(socket: Socket) {
         this._connectionSocket = socket;
+        this._restarting = false;
 
         // create socket stream parser and setup event handlers
         const socketStreamParser = new MessageStreamParser();
@@ -619,7 +640,9 @@ export class Session extends DebugSession {
             this.terminateSession(e.toString());
         });
         socket.on('close', () => {
-            this.terminateSession('socket closed');
+            // Ignore socket close if we are restarting the session
+            // This prevents the session from terminating when the `/reload all` command is sent to the debugee
+            if (!this._restarting) this.terminateSession('socket closed');
         });
 
         // connect socket to stream parser
